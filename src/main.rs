@@ -103,9 +103,13 @@ fn process_yaml(yaml: &Yaml, replacements: &HashMap<String, Vec<String>>) -> Yam
             let mut new_hash = Hash::new();
             for (key, value) in hash {
                 if let Yaml::String(key_str) = key {
-                    let new_key = key_str.replace("|expand", "");
-                    let new_value = process_value(value, replacements);
-                    new_hash.insert(Yaml::String(new_key), new_value);
+                    if key_str.contains("|expand") {
+                        let new_key = key_str.replace("|expand", "");
+                        let new_value = process_value(value, replacements);
+                        new_hash.insert(Yaml::String(new_key), new_value);
+                    } else {
+                        new_hash.insert(key.clone(), process_yaml(value, replacements));
+                    }
                 } else {
                     new_hash.insert(key.clone(), process_yaml(value, replacements));
                 }
@@ -184,5 +188,29 @@ mod tests {
 
         let expected_docs = YamlLoader::load_from_str(expected_yaml_str).unwrap();
         assert_eq!(processed_yaml, expected_docs[0]);
+    }
+
+    fn test_process_value() {
+        let yaml_str = r#"
+        key2|expand: "test%placeholder%"
+        "#;
+
+        let docs = YamlLoader::load_from_str(yaml_str).unwrap();
+        let mut replacements = HashMap::new();
+        replacements.insert(
+            "%placeholder%".to_string(),
+            vec!["replace_value1".to_string(), "replace_value2".to_string()],
+        );
+
+        // Test process_value directly
+        let value = &docs[0]["key2|expand"];
+        let processed_value = process_value(value, &replacements);
+
+        let expected_value = Yaml::Array(vec![
+            Yaml::String("testreplace_value1".to_string()),
+            Yaml::String("testreplace_value2".to_string()),
+        ]);
+
+        assert_eq!(processed_value, expected_value);
     }
 }

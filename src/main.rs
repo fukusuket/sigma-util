@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::io::BufRead;
 use std::path::Path;
-use std::{env, fs};
+use std::{env, fs, io};
 use yaml_rust2::yaml::Hash;
 use yaml_rust2::{Yaml, YamlLoader};
 
@@ -120,6 +121,30 @@ fn process_yaml(yaml: &Yaml, replacements: &HashMap<String, Vec<String>>) -> Yam
         }
         _ => yaml.clone(),
     }
+}
+
+fn read_expand_files<P: AsRef<Path>>(dir: P) -> io::Result<HashMap<String, Vec<String>>> {
+    let mut expand_map = HashMap::new();
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && path.extension().map_or(false, |ext| ext == "txt") {
+                if let Some(key) = path.file_stem().and_then(|s| s.to_str()) {
+                    let file = fs::File::open(&path)?;
+                    let reader = io::BufReader::new(file);
+                    let values: Vec<String> = reader
+                        .lines()
+                        .filter_map(Result::ok)
+                        .map(|s| s.trim().to_string())
+                        .collect();
+                    if !values.is_empty() {
+                        expand_map.insert(format!("%{}%", key), values);
+                    }
+                }
+            }
+        }
+    }
+    Ok(expand_map)
 }
 
 #[cfg(test)]
